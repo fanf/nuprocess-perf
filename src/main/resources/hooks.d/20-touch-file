@@ -1,0 +1,7 @@
+#!/bin/sh
+
+# UUID : ID of the file to touch
+
+ROOT="/tmp/test-hooks/files"
+
+touch ${ROOT}/test-${UUID}

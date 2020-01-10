@@ -1,0 +1,9 @@
+#!/bin/sh
+
+# this one ignore gien parameters
+
+ROOT="/tmp/test-hooks/files"
+
+if [ ! -d "${ROOT}" ]; then
+  mkdir ${ROOT}
+fi

@@ -1,0 +1,7 @@
+#!/bin/sh
+
+# UUID : ID of the file to use
+
+ROOT="/tmp/test-hooks/files"
+
+echo "hello ${UUID}" >> ${ROOT}/test-${UUID}
