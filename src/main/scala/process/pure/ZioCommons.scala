@@ -29,6 +29,8 @@ import zio._
 import zio.syntax._
 import process.pure.errors._
 import process.pure.zioruntime.ZioRuntime
+import zio.blocking.Blocking
+import zio.internal.{Platform, PlatformLive}
 
 /**
  * This is our based error for Rudder. Any method that can
@@ -54,7 +56,7 @@ object errors {
     effectUioUnit(printError(_))(effect)
   }
   def effectUioUnit[A](error: Throwable => UIO[Unit])(effect: => A): UIO[Unit] = {
-    ZioRuntime.effectBlocking(effect).unit.catchAll(error)
+    Task(effect).unit.catchAll(error)
   }
 
   /*
@@ -65,7 +67,7 @@ object errors {
    * be runned to know the result).
    */
   type PureResult[A] = Either[RudderError, A]
-  type IOResult[A] = ZIO[Any, RudderError, A]
+  type IOResult[A] = ZIO[ZEnv, RudderError, A]
 
   /*
    * An object that provides utility methods to import effectful
@@ -83,19 +85,19 @@ object errors {
     def effectNonBlocking[A](effect: => A): IO[SystemError, A] = {
       this.effectNonBlocking("An error occured")(effect)
     }
-    def effect[A](error: String)(effect: => A): IO[SystemError, A] = {
+    def effect[A](error: String)(effect: => A): ZIO[Blocking, SystemError, A] = {
       ZioRuntime.effectBlocking(effect).mapError(ex => SystemError(error, ex))
     }
-    def effect[A](effect: => A): IO[SystemError, A] = {
+    def effect[A](effect: => A): ZIO[Blocking, SystemError, A] = {
       this.effect("An error occured")(effect)
     }
-    def effectM[A](error: String)(ioeffect: => IOResult[A]): IOResult[A] = {
+    def effectM[A](error: String)(ioeffect: IOResult[A]): IOResult[A] = {
       IO.effect(ioeffect).foldM(
         ex  => SystemError(error, ex).fail
       , res => res
       )
     }
-    def effectM[A](ioeffect: => IOResult[A]): IOResult[A] = {
+    def effectM[A](ioeffect: IOResult[A]): IOResult[A] = {
       effectM("An error occured")(ioeffect)
     }
   }
@@ -156,13 +158,6 @@ object errors {
   }
 
   /*
-   * tag an effect as blocking (ie should run on the blocking thread pool)
-   */
-  implicit class ToBlocking[E<: RudderError, A](effect: ZIO[Any, E, A]) {
-    def blocking: ZIO[Any, E, A] = ZioRuntime.blocking(effect)
-  }
-
-  /*
    * A mapper from PureResult to IOResult
    */
   implicit class PureToIoResult[A](res: PureResult[A]) {
@@ -199,23 +194,22 @@ object zioruntime {
      * a hierarchy of calls.
      */
     val internal = new DefaultRuntime() {
-
-
+      override val Platform: Platform = PlatformLive.Benchmark
     }
 
     /*
      * use the blocking thread pool provided by that runtime.
      */
-    def blocking[E,A](io: ZIO[Any,E,A]): ZIO[Any,E,A] = {
-      _root_.zio.blocking.blocking(io).provide(internal.Environment)
+    def blocking[E,A](io: ZIO[Any,E,A]): ZIO[Blocking, E, A] = {
+      _root_.zio.blocking.blocking(io)
     }
 
-    def effectBlocking[A](effect: => A): ZIO[Any, Throwable, A] = {
-      _root_.zio.blocking.effectBlocking(effect).provide(internal.Environment)
+    def effectBlocking[A](effect: => A): ZIO[Blocking, Throwable, A] = {
+      _root_.zio.blocking.effectBlocking(effect)
     }
 
     def runNow[A](io: IOResult[A]): A = {
-      internal.unsafeRunSync(blocking(io)).fold(cause => throw cause.squashWith(err => new RuntimeException(err.fullMsg)), a => a)
+      internal.unsafeRunSync(io).fold(cause => throw cause.squashWith(err => new RuntimeException(err.fullMsg)), a => a)
     }
 
     /*
@@ -231,7 +225,7 @@ object zioruntime {
      * An unsafe run that is always started on a growing threadpool and its
      * effect marked as blocking.
      */
-    def unsafeRun[E, A](zio: => ZIO[Any, E, A]): A = internal.unsafeRun(blocking(zio))
+    def unsafeRun[E, A](zio: ZIO[Any, E, A]): A = internal.unsafeRun(blocking(zio))
 
     def environment = internal.Environment
   }
