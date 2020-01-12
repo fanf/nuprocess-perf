@@ -4,4 +4,4 @@
 
 ROOT="/tmp/test-hooks/files"
 
-touch ${ROOT}/test-${UUID}
+echo "touch ${ROOT}/test-${UUID}"

@@ -3,9 +3,6 @@ package process.pure
 import java.io.File
 
 
-import net.liftweb.common.Box
-import net.liftweb.common.Failure
-import net.liftweb.common.Full
 import process.pure.zioruntime._
 import process.pure.errors._
 import process._
@@ -23,17 +20,6 @@ trait MyPureLogger extends LogLevel {
 
 object PureHooksLogger extends MyPureLogger {
   object LongExecLogger extends MyPureLogger
-}
-
-object HooksImplicits {
-  import scala.language.implicitConversions
-  implicit def hooksReturnCodeToBox(hrc: HookReturnCode): Box[Unit] = {
-    hrc match {
-      case _: HookReturnCode.Success => Full(())
-      case x: HookReturnCode.Error   => Failure(s"${x.msg}\n stdout: ${x.stdout}\n stderr: '${x.stderr}'")
-    }
-  }
-
 }
 
 object RunHooks {

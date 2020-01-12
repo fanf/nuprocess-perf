@@ -4,4 +4,4 @@
 
 ROOT="/tmp/test-hooks/files"
 
-echo "hello ${UUID}" >> ${ROOT}/test-${UUID}
+echo "echo 'hello ${UUID}' >> ${ROOT}/test-${UUID}"

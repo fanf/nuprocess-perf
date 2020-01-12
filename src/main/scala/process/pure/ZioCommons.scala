@@ -25,10 +25,6 @@
 
 package process.pure
 
-import net.liftweb.common.Box
-import net.liftweb.common.Empty
-import net.liftweb.common.Failure
-import net.liftweb.common.Full
 import zio._
 import zio.syntax._
 import process.pure.errors._
@@ -248,27 +244,4 @@ object zioruntime {
     def runNowLogError(logger: RudderError => Unit): Unit = ZioRuntime.runNowLogError(logger)(io)
   }
 
-}
-
-/*
- * Implicit classes to change IO and Either TOWARDS box
- */
-object box {
-
-  /*
-   * Opposite to "toIO"
-   */
-  implicit class IOToBox[A](io: IOResult[A]) {
-    def errToFailure(err: RudderError): Failure = {
-      err match {
-        case Chained(msg, cause ) => new Failure(msg, Empty, Full(errToFailure(cause)))
-        case SystemError(msg, ex) => new Failure(msg, Full(ex), Empty)
-        case other                => new Failure(other.fullMsg, Empty, Empty)
-      }
-    }
-    def toBox: Box[A] = ZioRuntime.runNow(io.either) match {
-      case Right(x)  => Full(x)
-      case Left(err) => errToFailure(err)
-    }
-  }
 }

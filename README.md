@@ -1,22 +1,144 @@
 
-# ZIO and Monix performance comparison for NuProcess
+# `ZIO` and `Future` performance comparison for `NuProcess`
 
 We use [nuprocess](https://github.com/brettwooldridge/NuProcess/) to execute shell hooks in [Rudder](https://rudder.io).
 
-We used to do that with monix, but we are switching to ZIO. Unfortunatly, we hit a major 
-performance difference. 
+We used to wrap it with `Future` (and `Monix` `I/O` scheduler), but we are switching to `ZIO`. 
+Unfortunatly, we hit a major performance difference. 
 
-Hooks are used during a phase where they need to be called for a lot of node objects
-(depending of managed infra, from tens to thousands) and the part of the code doing 
-the call is not ported to ZIO (and porting that code is out of reach for now). 
+Hooks are used during a phase where they need to be called for a lot of our business 
+node objects (depending of managed infra, from tens to thousands) and the part of the code 
+doing that call is not ported to `ZIO` yet (and porting that code is out of reach for now). 
 
 So we ends up with something moraly equivalent to:
 
 ```
-for each nodes do { node =>
+nodes.foreach { node =>
   ZioRuntime.unsafeRun( runHooksSync(node) )
 }
 ```
+
+*The fact that `unsafeRun` is called each time can not be changed for now.*
+
+The code performance with `ZIO` is much worse than with `Future`. In the test
+here we show up to 2x slowdown (see below), and with real workload in Rudder, 
+when 5000 nodes are configured, the slowdown goes up to 10x.
+
+I tried to optmize all what I think could be optimiser, including `untraced` what I think
+I could, and I'm not sure how to optimize it more. The remaining difference may be due to 
+the ZIO runtime overhead (creating threads for pools? Just starting interpreter overhead?) 
+but I would love to have people more knowledgeable than me advices.
+
+## Original code
+
+The orginal code is from Rudder and is available in its repo:
+
+- branche 5.0 uses Monix: https://github.com/Normation/rudder/tree/branches/rudder/5.0/webapp/sources/rudder/rudder-core/src/main/scala/com/normation/rudder/hooks
+
+- branche 6.0 uses ZIO: https://github.com/Normation/rudder/tree/branches/rudder/6.0/webapp/sources/rudder/rudder-core/src/main/scala/com/normation/rudder/hooks
+
+## Code structure
+
+Current code is an extraction of original code with some adaptation to make both version compile with
+the minimum set of changes but also with the minimum dependencies as a will of simplification. 
+
+The code modelize hooks are script file with parameters that are sequentially executed through an OS
+process. We use [NuProcess](https://github.com/brettwooldridge/NuProcess/) for native script execution:
+it manages it's own thread to do/wait for script execution, and asynchronuously gives result (ie return
+code, stdout and stderr) through a scala handler. 
+
+### Directory organisation
+
+`process` package contains the code from the two branches. Common data structures were extracted in a 
+common `Data.scala` file, and code specific to each branch was put in a sub-package:
+
+- `effectful` contains branche 5.0 code based on `Future`,
+- `pure` contains branche 6.0 code based on `ZIO`.
+
+`Main.scala` is a runner used to call example hooks. 
+
+### `Data.scala`
+
+`Data.scala` contains `Hooks` data definition: hooks are scripts from a file system directory.
+`Hooks` get their parameters from scala through environment variables. In scala, we pass them
+two set of environment variables, one for the script parameter, and one from system environement
+variables to make shell happy. 
+
+`Hooks` return codes form an ADT with success (real ok or ok with warning), and several cases of
+errors (system error, script error, etc).
+ 
+### Branche specific hook implementation
+
+#### RunNuCommand.scala
+
+This class implement the execution of one script through an OS process call. 
+This is the part which interfaces with `NuProcess`. The main component are: 
+
+- `SilentLogger`: we hook `NuProcess` logger because it doesn't output what we want and isn't
+  easily configurable. 
+- `class CmdProcessHandler(promise: Promise[Nothing, CmdResult]) extends NuAbstractCharsetHandler(StandardCharsets.UTF_8)` is `NuProcess` interface handler, we need to implement it to get results.
+- `Cmd` and `CmdResult` are data class which eases translation to `NuProcess` input/output format.
+- `def run(cmd: Cmd, limit: Duration)` contains the logic to set-up `NuProcess` and get script
+  result. In branche 5.0 (Monix/Future), the result is boxed in a `Future`, and in branche 
+  6.0 (ZIO) in a `Promise`
+
+
+#### RunHooks.scala
+
+That class implement our `Hooks` logic, ie "sequentially execute scripts from a directory, sorted by
+name. Continue to the next only if the previous script was successful". 
+
+- `def async(hooks: Hooks, param, env...)` doesn't wait for the result. In branche 5.0, it means it returns
+  a `Future` and in 6.0, it's just a `ZIO[Any, RudderError, HookReturnCode]`
+  
+- `def sync(...)` is a call to `async` that actually runs the code and wait for result. In branche 5.0
+  with `Future`, running the code is just calling it of course, in branche 6.0 
+  
+#### ZioCommons.scala
+
+This class contains all the `Rudder` specific implementation and instanciation for `ZIO`.
+The particularly important points are: 
+
+##### IOResult[A] == IOResult[Any, RudderError, A] 
+
+This is our type with our `RudderError`, nothing fancy
+
+##### IOResult.effect === ZIO.effectBlocking
+
+In Rudder, we are forced to do a lot of interaction with non pure code (because Rudder is 10 years old 
+150kloc which started with 'scala as java'). So we import a lot of effects. 
+And we don't really know what these effects does, BY DEFAULT, WE IMPORT THEM ON THE BLOCKING
+THREADPOOL (https://github.com/zio/zio/issues/1275). 
+
+#### ZioRuntime
+
+It's a global instance of `DefaultRuntime`. 
+
+### Main.scala
+
+This class runs hooks from directory `src/main/resources/hooks.d`. The set-up copy that directory into
+`/tmp/test-hooks` which is also used as the directory where scripts do things. 
+
+In original code, method `GetHooks#def getHooks(basePath: String, ignoreSuffixes: List[String]): Hooks` is part 
+of `RunHooks.scala` but it's not the point of the performance problem and so was extracted in the common
+runner class. The logic is basically to look in a directory for executable files with some filtering
+on file extension and sort them to create a `Hooks` instance. 
+
+## Test it
+
+You need `sbt` and a `jvm` installed. I used `sbt 1.3.6` and `openjdk 11.0.4`.
+
+``` 
+git clone https://github.com/fanf/nuprocess-perf.git
+cd nuprocess-perf
+stb
+sbt:nuprocess> compile
+sbt:nuprocess> runMain Main
+```
+# Test results
+
+
+Directory "images" contains a visualvm thread view of what happens.
 
 On my laptop (XPS 9560, i7-7700HQ with nvme), I get the following results:
 
@@ -55,20 +177,66 @@ Pure     : 5222 ms
 [success] Total time: 95 s, completed 10 Jan 2020, 10:22:54
 ```
 
-So, there is up to 2x slowdown.
-I `untraced` what I think I could, and I'm not sure how to optimize it more. The
-remaining difference may be due to the ZIO runtime overhead (creating threads for
-the blocking pool? Just interpreter overhead?)
-Directory "images" contains a visualvm thread view of what happens.
+I added a run which sequentially run each case to try to see if it changes
+JVM behavior/warm-up (next step is certainly to use `jmh`)
 
-## Test it
+```
+=> not limiting threads
+Found hooks: Hooks(/tmp/test-hooks/hooks.d,List(10-create-root-dir, 20-touch-file, 30-echo-hello))
+Run alternativelly
+-- 0 --
+Future: 2731 ms
+ZIO   : 4733 ms
+-- 1 --
+Future: 2135 ms
+ZIO   : 3442 ms
+-- 2 --
+Future: 2127 ms
+ZIO   : 3270 ms
+-- 3 --
+Future: 2154 ms
+ZIO   : 3914 ms
+-- 4 --
+Future: 2058 ms
+ZIO   : 3797 ms
+-- 5 --
+Future: 2188 ms
+ZIO   : 3261 ms
+-- 6 --
+Future: 2025 ms
+ZIO   : 3339 ms
+-- 7 --
+Future: 2186 ms
+ZIO   : 3100 ms
+-- 8 --
+Future: 2062 ms
+ZIO   : 3712 ms
+-- 9 --
+Future: 2203 ms
+ZIO   : 3282 ms
 
-You need `sbt` and a `jvm` installed. I used `sbt 1.3.6` and `openjdk 11.0.4`.
+Run sequentially
+Future: 2114 ms
+Future: 2006 ms
+Future: 2038 ms
+Future: 2182 ms
+Future: 2097 ms
+Future: 2649 ms
+Future: 2110 ms
+Future: 2074 ms
+Future: 2221 ms
+Future: 2309 ms
 
-``` 
-git clone https://github.com/fanf/nuprocess-perf.git
-cd nuprocess-perf
-stb
-sbt:nuprocess> compile
-sbt:nuprocess> runMain Main
+ZIO   : 3359 ms
+ZIO   : 4540 ms
+ZIO   : 3347 ms
+ZIO   : 3441 ms
+ZIO   : 3630 ms
+ZIO   : 3478 ms
+ZIO   : 3232 ms
+ZIO   : 3514 ms
+ZIO   : 3076 ms
+ZIO   : 3277 ms
+
+Process finished with exit code 0
 ```
