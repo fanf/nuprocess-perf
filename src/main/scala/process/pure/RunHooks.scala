@@ -52,8 +52,8 @@ object RunHooks {
         _ <- ZIO.when(result.code >= 32 && result.code <= 64) { // warning
                for {
                  _ <- PureHooksLogger.warn(result.msg)
-                 _ <- ZIO.when(result.stdout.size > 0) { PureHooksLogger.warn(s"  -> stdout : ${result.stdout}") }
-                 _ <- ZIO.when(result.stderr.size > 0) { PureHooksLogger.warn(s"  -> stderr : ${result.stderr}") }
+                 _ <- ZIO.when(result.stdout.nonEmpty) { PureHooksLogger.warn(s"  -> stdout : ${result.stdout}") }
+                 _ <- ZIO.when(result.stderr.nonEmpty) { PureHooksLogger.warn(s"  -> stderr : ${result.stderr}") }
                } yield ()
              }
       } yield ()
@@ -115,7 +115,7 @@ object RunHooks {
       _        <- PureHooksLogger.debug(s"Run hooks: ${cmdInfo}")
       _        <- PureHooksLogger.trace(s"Hook environment variables: ${envVariables.show}")
       time_0   <- UIO(System.currentTimeMillis)
-      res      <- ZioRuntime.blocking(runAllSeq).timeout(killAfter).notOptional(s"Hook '${cmdInfo}' timed out after ${killAfter.asJava.toString}").provide(ZioRuntime.environment)
+      res      <- runAllSeq.timeout(killAfter).notOptional(s"Hook '${cmdInfo}' timed out after ${killAfter.asJava.toString}")
       duration <- UIO(System.currentTimeMillis - time_0)
       _        <- ZIO.when(duration > warnAfterMillis.toMillis) {
                     PureHooksLogger.LongExecLogger.warn(s"Hooks in directory '${cmdInfo}' took more than configured expected max duration (${warnAfterMillis.toMillis}): ${duration} ms")

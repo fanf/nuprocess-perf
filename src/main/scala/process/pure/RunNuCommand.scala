@@ -169,6 +169,7 @@ object RunNuCommand {
     val cmdInfo =  s"'${cmd.cmdPath} ${cmd.parameters.mkString(" ")}'"
     def effect[A](effect: => A) = IOResult.effect(s"Error when executing command ${cmdInfo}")(effect)
 
+    def effectNonBlocking[A](effect: => A) = IOResult.effectNonBlocking(s"Error when executing command ${cmdInfo}")(effect)
 
     for {
       _              <- ZIO.when(limit == Infinity|| limit.toMillis <= 0) {
@@ -176,9 +177,9 @@ object RunNuCommand {
                                           "That can create a pill of zombies if termination of the command is not correct")
                         }
       promise        <- Promise.make[Nothing, CmdResult]
-      handler        <- effect(new CmdProcessHandler(promise))
-      processBuilder <- effect(new NuProcessBuilder((cmd.cmdPath::cmd.parameters).asJava, cmd.environment.asJava))
-      _              <- effect(processBuilder.setProcessListener(handler))
+      handler        <- effectNonBlocking(new CmdProcessHandler(promise))
+      processBuilder <- effectNonBlocking(new NuProcessBuilder((cmd.cmdPath::cmd.parameters).asJava, cmd.environment.asJava))
+      _              <- effectNonBlocking(processBuilder.setProcessListener(handler))
 
       /*
        * The start process is nasty:
@@ -188,7 +189,7 @@ object RunNuCommand {
        * In the meantime, we silent the logger, and we check for return code of min value with
        * commons use cases:
        */
-      process        <- effect(processBuilder.start())
+      process        <- effectNonBlocking(processBuilder.start())
       res            <- if(process == null) {
                           Unexpected(s"Error: unable to start native command ${cmdInfo}").fail
                         } else {
