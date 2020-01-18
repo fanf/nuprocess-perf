@@ -89,7 +89,7 @@ object errors {
       ZioRuntime.effectBlocking(effect).mapError(ex => SystemError(error, ex))
     }
     def effect[A](effect: => A): IO[SystemError, A] = {
-      this.effect("An error occured")(effect)
+      this.effectNonBlocking("An error occured")(effect)
     }
     def effectM[A](error: String)(ioeffect: => IOResult[A]): IOResult[A] = {
       IO.effect(ioeffect).foldM(
@@ -201,19 +201,25 @@ object zioruntime {
      * a hierarchy of calls.
      */
     val internal = new DefaultRuntime() {
-      override val Platform: Platform = PlatformLive.Benchmark
+      import _root_.zio.internal._
+      import _root_.zio.clock._
+      import _root_.zio.random._
+      import _root_.zio.console._
+      import _root_.zio.system._
+      override val Environment: ZEnv  = new Clock.Live with Console.Live with System.Live with Random.Live with RudderBlockingService //_root_.zio.blocking.Blocking.Live
 
+      override val Platform: Platform = PlatformLive.fromExecutor(RudderExecutor.executor)
     }
 
     /*
      * use the blocking thread pool provided by that runtime.
      */
     def blocking[E,A](io: ZIO[Any,E,A]): ZIO[Any,E,A] = {
-      _root_.zio.blocking.blocking(io).provide(internal.Environment)
+      io
     }
 
     def effectBlocking[A](effect: => A): ZIO[Any, Throwable, A] = {
-      _root_.zio.blocking.effectBlocking(effect).provide(internal.Environment)
+      ZIO.effect(effect).provide(internal.Environment)
     }
 
     def runNow[A](io: IOResult[A]): A = {
