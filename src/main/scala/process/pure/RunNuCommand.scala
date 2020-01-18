@@ -168,6 +168,7 @@ object RunNuCommand {
     import scala.collection.JavaConverters._
     val cmdInfo =  s"'${cmd.cmdPath} ${cmd.parameters.mkString(" ")}'"
     def effect[A](effect: => A) = IOResult.effect(s"Error when executing command ${cmdInfo}")(effect)
+    def effectNonBlocking[A](effect: => A) = IOResult.effectNonBlocking(s"Error when executing command ${cmdInfo}")(effect)
 
 
     for {
@@ -176,9 +177,9 @@ object RunNuCommand {
                                           "That can create a pill of zombies if termination of the command is not correct")
                         }
       promise        <- Promise.make[Nothing, CmdResult]
-      handler        <- effect(new CmdProcessHandler(promise))
-      processBuilder <- effect(new NuProcessBuilder((cmd.cmdPath::cmd.parameters).asJava, cmd.environment.asJava))
-      _              <- effect(processBuilder.setProcessListener(handler))
+      handler        =  new CmdProcessHandler(promise) // not effect: only instanciation of objects
+      processBuilder =  new NuProcessBuilder((cmd.cmdPath::cmd.parameters).asJava, cmd.environment.asJava) // not effect: only instanciation of objects
+      _              <- effectNonBlocking(processBuilder.setProcessListener(handler)) // non blocking: only instanciation of objects
 
       /*
        * The start process is nasty:

@@ -10,7 +10,6 @@ import zio._
 import zio.duration._
 import zio.syntax._
 
-
 trait MyPureLogger extends LogLevel {
   import ZioRuntime.internal.Environment.console.putStrLn
   def trace(msg: => String) = ZIO.when(LOGLEVEL <= 1) { putStrLn(s"TRACE: $msg") }

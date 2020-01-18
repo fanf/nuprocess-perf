@@ -29,6 +29,8 @@ import zio._
 import zio.syntax._
 import process.pure.errors._
 import process.pure.zioruntime.ZioRuntime
+import zio.internal.Platform
+import zio.internal.PlatformLive
 
 /**
  * This is our based error for Rudder. Any method that can
@@ -199,7 +201,7 @@ object zioruntime {
      * a hierarchy of calls.
      */
     val internal = new DefaultRuntime() {
-
+      override val Platform: Platform = PlatformLive.Benchmark
 
     }
 
