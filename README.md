@@ -37,6 +37,18 @@ The orginal code is from Rudder and is available in its repo:
 
 - branche 6.0 uses ZIO: https://github.com/Normation/rudder/tree/branches/rudder/6.0/webapp/sources/rudder/rudder-core/src/main/scala/com/normation/rudder/hooks
 
+##  UPDATE: performance boost on branch `only_on_pool_fjp` compared to master
+
+In this branche, we have two major changes compared to master:
+
+- 1/ we use the same thread pool for blocking and non blocking effects: JDK 8 ForkJoinPool. 
+
+By itselve, that change only yields minor performance benefits. 
+
+- 2/ we shortcut all `effectBlocking` into `effect`, removing calls to pool swtich (even if there is only one pool). 
+
+This yield major performance boost, and we get similar order of magnitude results (<10%) than future.
+
 ## Code structure
 
 Current code is an extraction of original code with some adaptation to make both version compile with
