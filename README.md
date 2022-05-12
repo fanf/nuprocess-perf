@@ -37,6 +37,20 @@ The orginal code is from Rudder and is available in its repo:
 
 - branche 6.0 uses ZIO: https://github.com/Normation/rudder/tree/branches/rudder/6.0/webapp/sources/rudder/rudder-core/src/main/scala/com/normation/rudder/hooks
 
+##  UPDATE2: major performance and simplification boost on with ZIO 2.0.0-RC6
+
+ZIO 2.0.0-RC6 is the first revision of ZIO using the auto-magic threadpool and blocking
+effect manager (see https://github.com/zio/zio/issues/1275): it means that ZIO is able 
+by itself to decide if an effect is blocking of not, to migrate it to the appropriate
+threadpool, and to learn which code path leads to a blocking effect. 
+
+From a user point of view, it means that we JUST DON'T CARE if a method might be blocking
+(I'm looking at you InetAddress): never again will you face a deadlock. 
+
+And it massively improves performances, with results comparable monix one without having
+anything to do - but with an automatic management of complicated cases. 
+
+
 ##  UPDATE: performance boost on branch `only_on_pool_fjp` compared to master
 
 In this branche, we have two major changes compared to master:
@@ -156,16 +170,6 @@ On my laptop (XPS 9560, i7-7700HQ with nvme), I get the following results:
 
 ## ZIO 2.0.0-RC6 results
 
-ZIO 2.0.0-RC6 is the first revision of ZIO using the auto-magic threadpool and blocking
-effect manager (see https://github.com/zio/zio/issues/1275): it means that ZIO is able 
-by itself to decide if an effect is blocking of not, to migrate it to the appropriate
-threadpool, and to learn which code path leads to a blocking effect. 
-
-From a user point of view, it means that we JUST DON'T CARE if a method might be blocking
-(I'm looking at you InetAddress): never again will you face a deadlock. 
-
-And it massively improves performances, with results comparable monix one without having
-anything to do - but with an automatic management of complicated cases. 
 
 ```
 Run alternativelly
