@@ -51,9 +51,6 @@ import process.pure.errors.IOResult
 import process.pure.errors.Unexpected
 import process.pure.zioruntime._
 import zio._
-import zio.syntax._
-import zio.duration.Duration.Infinity
-import zio.duration._
 
 /*
  * The goal of that file is to give a simple abstraction to run hooks in
@@ -201,12 +198,12 @@ object RunNuCommand {
       )
 
     for {
-      _ <- ZIO.when(limit == Infinity || limit.toMillis <= 0) {
-        ZioRuntime.environment.console.putStrLn(
+      _ <- ZIO.when(limit == Duration.Infinity || limit.toMillis <= 0) {
+        ZIO.console.flatMap(_.print(
           s"No duration limit set for command '${cmd.cmdPath} ${cmd.parameters.mkString(" ")}'. " +
             "That can create a pill of zombies if termination of the command is not correct"
-        )
-      }
+        ))
+      }.orDie
       promise <- Promise.make[Nothing, CmdResult]
       handler = new CmdProcessHandler(promise) // not effect: only instanciation of objects
       processBuilder = new NuProcessBuilder(
@@ -225,7 +222,7 @@ object RunNuCommand {
        */
       process <- effect(processBuilder.start())
       res <- if (process == null) {
-        Unexpected(s"Error: unable to start native command ${cmdInfo}").fail
+        ZIO.fail(Unexpected(s"Error: unable to start native command ${cmdInfo}"))
       } else {
         //that class#method does not accept interactive mode
         effect {

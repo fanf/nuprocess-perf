@@ -2,10 +2,10 @@ name := "nuprocess"
 
 version := "0.1"
 
-scalaVersion := "2.12.10"
+scalaVersion := "2.12.15"
 
 libraryDependencies ++= Seq(
-  "dev.zio" %% "zio" % "1.0.0-RC16",
+  "dev.zio" %% "zio" % "2.0.0-RC6",
   "net.liftweb" %% "lift-common" % "3.3.0",
   "io.monix" %% "monix" % "2.3.3",
   "io.monix" %% "monix" % "2.3.3",

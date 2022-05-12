@@ -1,24 +1,23 @@
 package process.pure
 
 import java.io.File
-
 import process.pure.zioruntime._
 import process.pure.errors._
 import process._
-import zio._
-import zio.duration._
-import zio.syntax._
+
+import java.util.concurrent.TimeUnit
+
+import zio.{LogLevel => _, _}
 
 trait MyPureLogger extends LogLevel {
-  import ZioRuntime.internal.Environment.console.putStrLn
   def trace(msg: => String) = ZIO.when(LOGLEVEL <= 1) {
-    putStrLn(s"TRACE: $msg")
+    ZIO.console.flatMap(_.print(s"TRACE: $msg")).orDie
   }
   def debug(msg: => String) = ZIO.when(LOGLEVEL <= 2) {
-    putStrLn(s"DEBUG: $msg")
+    ZIO.console.flatMap(_.print(s"DEBUG: $msg")).orDie
   }
   def warn(msg: => String) = ZIO.when(LOGLEVEL <= 4) {
-    putStrLn(s"WARN:  $msg")
+    ZIO.console.flatMap(_.print(s"WARN:  $msg")).orDie
   }
 }
 
@@ -108,7 +107,7 @@ object RunHooks {
     val runAllSeq = ZIO.foldLeft(hooks.hooksFile)(Ok("", ""): HookReturnCode) {
       case (previousCode, nextHookName) =>
         previousCode match {
-          case x: Error => x.succeed
+          case x: Error => ZIO.succeed(x)
           case x: Success => // run the next hook
             val path = hooks.basePath + File.separator + nextHookName
             val env = envVariables.add(hookParameters)
@@ -137,15 +136,14 @@ object RunHooks {
       _ <- PureHooksLogger.trace(
         s"Hook environment variables: ${envVariables.show}"
       )
-      time_0 <- UIO(System.currentTimeMillis)
+      time_0 <- ZIO.clock.flatMap(_.currentTime(TimeUnit.MILLISECONDS))
       res <- ZioRuntime
         .blocking(runAllSeq)
         .timeout(killAfter)
         .notOptional(
           s"Hook '${cmdInfo}' timed out after ${killAfter.asJava.toString}"
         )
-        .provide(ZioRuntime.environment)
-      duration <- UIO(System.currentTimeMillis - time_0)
+      duration <- ZIO.clock.flatMap(_.currentTime(TimeUnit.MILLISECONDS)).map(_ - time_0)
       _ <- ZIO.when(duration > warnAfterMillis.toMillis) {
         PureHooksLogger.LongExecLogger.warn(
           s"Hooks in directory '${cmdInfo}' took more than configured expected max duration (${warnAfterMillis.toMillis}): ${duration} ms"

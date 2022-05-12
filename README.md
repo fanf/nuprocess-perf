@@ -115,7 +115,7 @@ The particularly important points are:
 
 This is our type with our `RudderError`, nothing fancy
 
-##### IOResult.effect === ZIO.effectBlocking
+##### IOResult.effect === ZZIO.attemptBlocking
 
 In Rudder, we are forced to do a lot of interaction with non pure code (because Rudder is 10 years old 
 150kloc which started with 'scala as java'). So we import a lot of effects. 
@@ -153,6 +153,81 @@ sbt:nuprocess> runMain Main
 Directory "images" contains a visualvm thread view of what happens.
 
 On my laptop (XPS 9560, i7-7700HQ with nvme), I get the following results:
+
+## ZIO 2.0.0-RC6 results
+
+ZIO 2.0.0-RC6 is the first revision of ZIO using the auto-magic threadpool and blocking
+effect manager (see https://github.com/zio/zio/issues/1275): it means that ZIO is able 
+by itself to decide if an effect is blocking of not, to migrate it to the appropriate
+threadpool, and to learn which code path leads to a blocking effect. 
+
+From a user point of view, it means that we JUST DON'T CARE if a method might be blocking
+(I'm looking at you InetAddress): never again will you face a deadlock. 
+
+And it massively improves performances, with results comparable monix one without having
+anything to do - but with an automatic management of complicated cases. 
+
+```
+Run alternativelly
+-- 0 --
+Future: 2742 ms
+ZIO   : 3457 ms
+-- 1 --
+Future: 2519 ms
+ZIO   : 2778 ms
+-- 2 --
+Future: 2542 ms
+ZIO   : 2735 ms
+-- 3 --
+Future: 2474 ms
+ZIO   : 2599 ms
+-- 4 --
+Future: 2504 ms
+ZIO   : 2614 ms
+-- 5 --
+Future: 2481 ms
+ZIO   : 3031 ms
+-- 6 --
+Future: 2504 ms
+ZIO   : 2883 ms
+-- 7 --
+Future: 2475 ms
+ZIO   : 2999 ms
+-- 8 --
+Future: 3243 ms
+ZIO   : 2600 ms
+-- 9 --
+Future: 2441 ms
+ZIO   : 2583 ms
+Run sequentially
+Future: 2677 ms
+Future: 3184 ms
+Future: 2463 ms
+Future: 2461 ms
+Future: 2889 ms
+Future: 2454 ms
+Future: 2831 ms
+Future: 2782 ms
+Future: 2954 ms
+Future: 2909 ms
+ZIO   : 2548 ms
+ZIO   : 2567 ms
+ZIO   : 2633 ms
+ZIO   : 3498 ms
+ZIO   : 2829 ms
+ZIO   : 2575 ms
+ZIO   : 2560 ms
+ZIO   : 2590 ms
+ZIO   : 2514 ms
+ZIO   : 3067 ms
+[success] Total time: 110 s, completed 12-May-2022 18:55:34
+
+```
+
+
+## ZIO 1.0.0-RC16 results
+
+These are the old results with 2IO 1.0 that leaded to lots of adhoc improvements
 
 ```
 Found hooks: Hooks(/tmp/test-hooks/hooks.d,List(10-create-root-dir, 20-touch-file, 30-echo-hello))

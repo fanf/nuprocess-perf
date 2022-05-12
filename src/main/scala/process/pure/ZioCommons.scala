@@ -24,12 +24,11 @@
 
 package process.pure
 
-import zio._
-import zio.syntax._
+import zio.{System => _, _}
 import process.pure.errors._
 import process.pure.zioruntime.ZioRuntime
-import zio.internal.Platform
-import zio.internal.PlatformLive
+
+import java.util.concurrent.TimeUnit
 
 /**
   * This is our based error for Rudder. Any method that can
@@ -48,11 +47,11 @@ object errors {
    */
   def effectUioUnit[A](effect: => A): UIO[Unit] = {
     def printError(t: Throwable): UIO[Unit] = {
-      val print = (s: String) => IO.effect(System.err.println(s))
+      val print = (s: String) => ZIO.attempt(System.err.println(s))
       //here, we must run.unit, because if it fails we can't do much more (and the app is certainly totally broken)
-      (print(s"${t.getClass.getName}:${t.getMessage}") *> IO.foreach(
+      (print(s"${t.getClass.getName}:${t.getMessage}") *> ZIO.foreach(
         t.getStackTrace
-      )(st => print(st.toString))).run.unit
+      )(st => print(st.toString))).orDie.unit
     }
     effectUioUnit(printError(_))(effect)
   }
@@ -85,7 +84,7 @@ object errors {
     def effectNonBlocking[A](
         error: String
     )(effect: => A): IO[SystemError, A] = {
-      IO.effect(effect).mapError(ex => SystemError(error, ex))
+      ZIO.attempt(effect).mapError(ex => SystemError(error, ex))
     }
     def effectNonBlocking[A](effect: => A): IO[SystemError, A] = {
       this.effectNonBlocking("An error occured")(effect)
@@ -97,9 +96,9 @@ object errors {
       this.effect("An error occured")(effect)
     }
     def effectM[A](error: String)(ioeffect: => IOResult[A]): IOResult[A] = {
-      IO.effect(ioeffect)
-        .foldM(
-          ex => SystemError(error, ex).fail,
+      ZIO.attempt(ioeffect)
+        .foldZIO(
+          ex => ZIO.fail(SystemError(error, ex)),
           res => res
         )
     }
@@ -187,8 +186,8 @@ object errors {
   // not optional - mandatory presence of an object
   implicit class OptionToIoResult[A](res: Option[A]) {
     def notOptional(error: String) = res match {
-      case None    => Inconsistancy(error).fail
-      case Some(x) => x.succeed
+      case None    => ZIO.fail(Inconsistancy(error))
+      case Some(x) => ZIO.succeed(x)
     }
   }
 
@@ -203,7 +202,7 @@ object errors {
 
 object zioruntime {
 
-  val currentTimeMillis = UIO.effectTotal(System.currentTimeMillis())
+  val currentTimeMillis = ZIO.clock.flatMap(_.currentTime(TimeUnit.MILLISECONDS))
 
   /*
    * Default ZIO Runtime used everywhere.
@@ -215,20 +214,17 @@ object zioruntime {
      * IO into an async thread pool to avoid deadlock in case of
      * a hierarchy of calls.
      */
-    val internal = new DefaultRuntime() {
-      override val Platform: Platform = PlatformLive.Benchmark
-
-    }
+    val internal = Runtime.default
 
     /*
-     * use the blocking thread pool provided by that runtime.
+     * In ZIO 2.0, ZIO knows by itself what is blocking
      */
     def blocking[E, A](io: ZIO[Any, E, A]): ZIO[Any, E, A] = {
-      _root_.zio.blocking.blocking(io).provide(internal.Environment)
+      io
     }
 
     def effectBlocking[A](effect: => A): ZIO[Any, Throwable, A] = {
-      _root_.zio.blocking.effectBlocking(effect).provide(internal.Environment)
+      ZIO.attempt(effect)
     }
 
     def runNow[A](io: IOResult[A]): A = {
@@ -257,7 +253,6 @@ object zioruntime {
     def unsafeRun[E, A](zio: => ZIO[Any, E, A]): A =
       internal.unsafeRun(blocking(zio))
 
-    def environment = internal.Environment
   }
 
   /*
