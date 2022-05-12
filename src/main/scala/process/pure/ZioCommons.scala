@@ -1,23 +1,22 @@
 /*
 *************************************************************************************
-* Copyright 2019 Normation SAS
+ * Copyright 2019 Normation SAS
 *************************************************************************************
-*
-* Licensed under the Apache License, Version 2.0 (the "License");
-* you may not use this file except in compliance with the License.
-* You may obtain a copy of the License at
-*
-* http://www.apache.org/licenses/LICENSE-2.0
-*
-* Unless required by applicable law or agreed to in writing, software
-* distributed under the License is distributed on an "AS IS" BASIS,
-* WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-* See the License for the specific language governing permissions and
-* limitations under the License.
-*
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *
 *************************************************************************************
-*/
-
+ */
 
 /*
  * This class provides common usage for Zio
@@ -33,12 +32,12 @@ import zio.internal.Platform
 import zio.internal.PlatformLive
 
 /**
- * This is our based error for Rudder. Any method that can
- * error should return that RudderError type to allow
- * seemless interaction between modules.
- * None the less, all module should have its own domain error
- * for meaningful semantic intra-module.
- */
+  * This is our based error for Rudder. Any method that can
+  * error should return that RudderError type to allow
+  * seemless interaction between modules.
+  * None the less, all module should have its own domain error
+  * for meaningful semantic intra-module.
+  */
 object errors {
 
   /*
@@ -49,13 +48,17 @@ object errors {
    */
   def effectUioUnit[A](effect: => A): UIO[Unit] = {
     def printError(t: Throwable): UIO[Unit] = {
-      val print = (s:String) => IO.effect(System.err.println(s))
+      val print = (s: String) => IO.effect(System.err.println(s))
       //here, we must run.unit, because if it fails we can't do much more (and the app is certainly totally broken)
-      (print(s"${t.getClass.getName}:${t.getMessage}") *> IO.foreach(t.getStackTrace)(st => print(st.toString))).run.unit
+      (print(s"${t.getClass.getName}:${t.getMessage}") *> IO.foreach(
+        t.getStackTrace
+      )(st => print(st.toString))).run.unit
     }
     effectUioUnit(printError(_))(effect)
   }
-  def effectUioUnit[A](error: Throwable => UIO[Unit])(effect: => A): UIO[Unit] = {
+  def effectUioUnit[A](
+      error: Throwable => UIO[Unit]
+  )(effect: => A): UIO[Unit] = {
     ZioRuntime.effectBlocking(effect).unit.catchAll(error)
   }
 
@@ -79,7 +82,9 @@ object errors {
    * use `IOResult.effectTotal`).
    */
   object IOResult {
-    def effectNonBlocking[A](error: String)(effect: => A): IO[SystemError, A] = {
+    def effectNonBlocking[A](
+        error: String
+    )(effect: => A): IO[SystemError, A] = {
       IO.effect(effect).mapError(ex => SystemError(error, ex))
     }
     def effectNonBlocking[A](effect: => A): IO[SystemError, A] = {
@@ -92,10 +97,11 @@ object errors {
       this.effect("An error occured")(effect)
     }
     def effectM[A](error: String)(ioeffect: => IOResult[A]): IOResult[A] = {
-      IO.effect(ioeffect).foldM(
-        ex  => SystemError(error, ex).fail
-      , res => res
-      )
+      IO.effect(ioeffect)
+        .foldM(
+          ex => SystemError(error, ex).fail,
+          res => res
+        )
     }
     def effectM[A](ioeffect: => IOResult[A]): IOResult[A] = {
       effectM("An error occured")(ioeffect)
@@ -111,10 +117,13 @@ object errors {
     def formatException(cause: Throwable): String = {
       // display at max 3 stack trace from 'com.normation'. That should give plenty information for
       // dev, which are relevant to understand where the problem is, and without destroying logs
-      val stack = cause.getStackTrace.filter(_.getClassName.startsWith("com.normation")).take(3).map(_.toString).mkString("\n -> ", "\n -> ", "")
+      val stack = cause.getStackTrace
+        .filter(_.getClassName.startsWith("com.normation"))
+        .take(3)
+        .map(_.toString)
+        .mkString("\n -> ", "\n -> ", "")
       s"${cause.getClass.getName}: ${cause.getMessage} ${stack}"
     }
-
 
   }
 
@@ -129,8 +138,10 @@ object errors {
 
   // a common error for system error not specificaly bound to
   // a domain context.
-  final case class SystemError(msg: String, cause: Throwable) extends RudderError {
-    override def fullMsg: String = super.fullMsg + s"; cause was: ${RudderError.formatException(cause)}"
+  final case class SystemError(msg: String, cause: Throwable)
+      extends RudderError {
+    override def fullMsg: String =
+      super.fullMsg + s"; cause was: ${RudderError.formatException(cause)}"
   }
 
   // a generic error to tell "I wasn't expecting that value"
@@ -145,7 +156,8 @@ object errors {
     def msg = s"${hint}; cause was: ${cause.fullMsg}"
   }
 
-  final case class Chained[E <: RudderError](hint: String, cause: E) extends BaseChainError[E] {
+  final case class Chained[E <: RudderError](hint: String, cause: E)
+      extends BaseChainError[E] {
     override def fullMsg: String = msg
   }
 
@@ -154,13 +166,14 @@ object errors {
    * error type doing so.
    */
   implicit class IOChainError[R, E <: RudderError, A](res: ZIO[R, E, A]) {
-    def chainError(hint: String): ZIO[R, RudderError, A] = res.mapError(err => Chained(hint, err))
+    def chainError(hint: String): ZIO[R, RudderError, A] =
+      res.mapError(err => Chained(hint, err))
   }
 
   /*
    * tag an effect as blocking (ie should run on the blocking thread pool)
    */
-  implicit class ToBlocking[E<: RudderError, A](effect: ZIO[Any, E, A]) {
+  implicit class ToBlocking[E <: RudderError, A](effect: ZIO[Any, E, A]) {
     def blocking: ZIO[Any, E, A] = ZioRuntime.blocking(effect)
   }
 
@@ -180,8 +193,10 @@ object errors {
   }
 
   // also with the flatmap included to avoid a combinator
-  implicit class MandatoryOptionIO[R, E <: RudderError, A](res: ZIO[R, E, Option[A]]) {
-    def notOptional(error: String) = res.flatMap( _.notOptional(error))
+  implicit class MandatoryOptionIO[R, E <: RudderError, A](
+      res: ZIO[R, E, Option[A]]
+  ) {
+    def notOptional(error: String) = res.flatMap(_.notOptional(error))
   }
 
 }
@@ -208,7 +223,7 @@ object zioruntime {
     /*
      * use the blocking thread pool provided by that runtime.
      */
-    def blocking[E,A](io: ZIO[Any,E,A]): ZIO[Any,E,A] = {
+    def blocking[E, A](io: ZIO[Any, E, A]): ZIO[Any, E, A] = {
       _root_.zio.blocking.blocking(io).provide(internal.Environment)
     }
 
@@ -217,23 +232,30 @@ object zioruntime {
     }
 
     def runNow[A](io: IOResult[A]): A = {
-      internal.unsafeRunSync(blocking(io)).fold(cause => throw cause.squashWith(err => new RuntimeException(err.fullMsg)), a => a)
+      internal
+        .unsafeRunSync(blocking(io))
+        .fold(
+          cause =>
+            throw cause.squashWith(err => new RuntimeException(err.fullMsg)),
+          a => a
+        )
     }
 
     /*
      * Run now, discard result, log error if any
      */
-    def runNowLogError[A](logger: RudderError => Unit)(io: IOResult[A]): Unit = {
-      runNow(io.unit.either).swap.foreach(err =>
-        logger(err)
-      )
+    def runNowLogError[A](
+        logger: RudderError => Unit
+    )(io: IOResult[A]): Unit = {
+      runNow(io.unit.either).swap.foreach(err => logger(err))
     }
 
     /*
      * An unsafe run that is always started on a growing threadpool and its
      * effect marked as blocking.
      */
-    def unsafeRun[E, A](zio: => ZIO[Any, E, A]): A = internal.unsafeRun(blocking(zio))
+    def unsafeRun[E, A](zio: => ZIO[Any, E, A]): A =
+      internal.unsafeRun(blocking(zio))
 
     def environment = internal.Environment
   }
@@ -243,7 +265,8 @@ object zioruntime {
    */
   implicit class UnsafeRun[A](io: IOResult[A]) {
     def runNow: A = ZioRuntime.runNow(io)
-    def runNowLogError(logger: RudderError => Unit): Unit = ZioRuntime.runNowLogError(logger)(io)
+    def runNowLogError(logger: RudderError => Unit): Unit =
+      ZioRuntime.runNowLogError(logger)(io)
   }
 
 }

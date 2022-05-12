@@ -22,9 +22,10 @@ package process
  */
 
 final case class Hooks(basePath: String, hooksFile: List[String])
+
 /**
- * Hook env are pairs of environment variable name <=> value
- */
+  * Hook env are pairs of environment variable name <=> value
+  */
 final case class HookEnvPair(name: String, value: String) {
   def show = s"[${name}:${value}]"
 }
@@ -36,17 +37,18 @@ final case class HookEnvPairs(values: List[HookEnvPair]) extends AnyVal {
   def add(other: HookEnvPairs) = HookEnvPairs(this.values ::: other.values)
 
   /**
-   * Formatted string
-   * [key1:val1][key2:val2]...
-   */
+    * Formatted string
+    * [key1:val1][key2:val2]...
+    */
   def show: String = values.map(_.show).mkString(" ")
 }
 
 object HookEnvPairs {
-  def toListPairs(values: (String, String)*) = values.map( p => HookEnvPair(p._1, p._2)).toList
+  def toListPairs(values: (String, String)*) =
+    values.map(p => HookEnvPair(p._1, p._2)).toList
 
-  def build( values: (String, String)*) = {
-    HookEnvPairs(toListPairs(values:_*))
+  def build(values: (String, String)*) = {
+    HookEnvPairs(toListPairs(values: _*))
   }
 }
 
@@ -55,37 +57,52 @@ trait LogLevel {
 }
 
 /**
- * Loggger for hooks
- */
+  * Loggger for hooks
+  */
 trait MyLogger extends LogLevel {
-  def trace(msg: => String): Unit = if(LOGLEVEL <= 1) { println(s"TRACE: $msg") }
-  def debug(msg: => String): Unit = if(LOGLEVEL <= 2) { println(s"DEBUG: $msg") }
-  def warn (msg: => String): Unit = if(LOGLEVEL <= 4) { println(s"WARN:  $msg") }
+  def trace(msg: => String): Unit = if (LOGLEVEL <= 1) {
+    println(s"TRACE: $msg")
+  }
+  def debug(msg: => String): Unit = if (LOGLEVEL <= 2) {
+    println(s"DEBUG: $msg")
+  }
+  def warn(msg: => String): Unit = if (LOGLEVEL <= 4) {
+    println(s"WARN:  $msg")
+  }
 }
 object HooksLogger extends MyLogger {
   object LongExecLogger extends MyLogger
 }
 
 sealed trait HookReturnCode {
-  def code   : Int
-  def stdout : String
-  def stderr : String
-  def msg    : String
+  def code: Int
+  def stdout: String
+  def stderr: String
+  def msg: String
 }
 
 object HookReturnCode {
   sealed trait Success extends HookReturnCode
-  sealed trait Error   extends HookReturnCode
-
+  sealed trait Error extends HookReturnCode
 
   //special return code
-  final case class  Ok (stdout: String, stderr: String) extends Success {
+  final case class Ok(stdout: String, stderr: String) extends Success {
     val code = 0
     val msg = ""
   }
-  final case class  Warning(code: Int, stdout: String, stderr: String, msg: String) extends Success
-  final case class  ScriptError(code: Int, stdout: String, stderr: String, msg: String) extends Error
-  final case class  SystemError(msg: String) extends Error {
+  final case class Warning(
+      code: Int,
+      stdout: String,
+      stderr: String,
+      msg: String
+  ) extends Success
+  final case class ScriptError(
+      code: Int,
+      stdout: String,
+      stderr: String,
+      msg: String
+  ) extends Error
+  final case class SystemError(msg: String) extends Error {
     val stderr = ""
     val stdout = ""
     val code = Int.MaxValue // special value out of bound 0-255, far in the "reserved" way
@@ -93,7 +110,8 @@ object HookReturnCode {
 
   //special return code 100: it is a stop state, but in some case can lead to
   //an user message that is tailored to explain that it is not a hook error)
-  final case class  Interrupt(msg: String, stdout: String, stderr: String) extends Error {
+  final case class Interrupt(msg: String, stdout: String, stderr: String)
+      extends Error {
     val code = Interrupt.code
   }
   object Interrupt {
