@@ -4,13 +4,13 @@
 We use [nuprocess](https://github.com/brettwooldridge/NuProcess/) to execute shell hooks in [Rudder](https://rudder.io).
 
 We used to wrap it with `Future` (and `Monix` `I/O` scheduler), but we are switching to `ZIO`. 
-Unfortunatly, we hit a major performance difference. 
+Unfortunately, we hit a major performance difference. 
 
 Hooks are used during a phase where they need to be called for a lot of our business 
-node objects (depending of managed infra, from tens to thousands) and the part of the code 
+node objects (depending on managed infra, from tens to thousands) and the part of the code 
 doing that call is not ported to `ZIO` yet (and porting that code is out of reach for now). 
 
-So we ends up with something moraly equivalent to:
+So, we end up with something equivalent to:
 
 ```
 nodes.foreach { node =>
@@ -18,16 +18,16 @@ nodes.foreach { node =>
 }
 ```
 
-*The fact that `unsafeRun` is called each time can not be changed for now.*
+*The fact that `unsafeRun` is called each time cannot be changed for now.*
 
 The code performance with `ZIO` is much worse than with `Future`. In the test
 here we show up to 2x slowdown (see below), and with real workload in Rudder, 
 when 5000 nodes are configured, the slowdown goes up to 10x.
 
-I tried to optmize all what I think could be optimiser, including `untraced` what I think
-I could, and I'm not sure how to optimize it more. The remaining difference may be due to 
-the ZIO runtime overhead (creating threads for pools? Just starting interpreter overhead?) 
-but I would love to have people more knowledgeable than me advices.
+I tried to optimize all what, I thought, could be optimized, including using`untraced`.
+I'm not certain how to optimize it more. The main remaining difference may be due to 
+the ZIO runtime overhead (creating threads for pools? Just starting interpreter overhead?).
+However, I would love to have people more knowledgeable than me to take a look at it.
 
 ## Original code
 
@@ -37,7 +37,7 @@ The orginal code is from Rudder and is available in its repo:
 
 - branche 6.0 uses ZIO: https://github.com/Normation/rudder/tree/branches/rudder/6.0/webapp/sources/rudder/rudder-core/src/main/scala/com/normation/rudder/hooks
 
-##  UPDATE2: major performance and simplification boost on with ZIO 2.0.0-RC6
+##  UPDATE 2: major performance and simplification boost on with ZIO 2.0.0-RC6
 
 ZIO 2.0.0-RC6 is the first revision of ZIO using the auto-magic threadpool and blocking
 effect manager (see https://github.com/zio/zio/issues/1275): it means that ZIO is able 
@@ -47,7 +47,7 @@ threadpool, and to learn which code path leads to a blocking effect.
 From a user point of view, it means that we JUST DON'T CARE if a method might be blocking
 (I'm looking at you InetAddress): never again will you face a deadlock. 
 
-And it massively improves performances, with results comparable monix one without having
+And it massively improves performances, with results comparable to `monix 1` without having
 anything to do - but with an automatic management of complicated cases. 
 
 
@@ -55,20 +55,20 @@ anything to do - but with an automatic management of complicated cases.
 
 In this branche, we have two major changes compared to master:
 
-- 1/ we use the same thread pool for blocking and non blocking effects: JDK 8 ForkJoinPool. 
+- 1/ we use the same thread pool for blocking and non-blocking effects: JDK 8 ForkJoinPool. 
 
 By itselve, that change only yields minor performance benefits. 
 
-- 2/ we shortcut all `effectBlocking` into `effect`, removing calls to pool swtich (even if there is only one pool). 
+- 2/ we shortcut all `effectBlocking` into `effect`, removing calls to pool switch (even if there is only one pool). 
 
 This yield major performance boost, and we get similar order of magnitude results (<10%) than future.
 
 ## Code structure
 
 Current code is an extraction of original code with some adaptation to make both version compile with
-the minimum set of changes but also with the minimum dependencies as a will of simplification. 
+the minimum set of changes, but also with the minimum dependencies, as a will of simplification. 
 
-The code modelize hooks are script file with parameters that are sequentially executed through an OS
+The code modelize hooks are a script file with parameters that are sequentially executed through an OS
 process. We use [NuProcess](https://github.com/brettwooldridge/NuProcess/) for native script execution:
 it manages it's own thread to do/wait for script execution, and asynchronuously gives result (ie return
 code, stdout and stderr) through a scala handler. 
@@ -131,9 +131,9 @@ This is our type with our `RudderError`, nothing fancy
 
 ##### IOResult.effect === ZZIO.attemptBlocking
 
-In Rudder, we are forced to do a lot of interaction with non pure code (because Rudder is 10 years old 
-150kloc which started with 'scala as java'). So we import a lot of effects. 
-And we don't really know what these effects does, BY DEFAULT, WE IMPORT THEM ON THE BLOCKING
+In Rudder, we are forced to do a lot of interaction with non-pure code (because Rudder is 10 years old 
+150kloc which started with 'scala as java'). So, we import a lot of effects. 
+And we don't really know what these effects do, BY DEFAULT, WE IMPORT THEM ON THE BLOCKING
 THREADPOOL (https://github.com/zio/zio/issues/1275). 
 
 #### ZioRuntime
